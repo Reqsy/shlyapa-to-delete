@@ -19,8 +19,31 @@ os.chdir("Документы")
 current_directory = os.getcwd()  # Переменная для хранения текущей директории
 working_file_path = ""
 In_work = False
-folders = ["Федеральный конституционный закон", "Закон РФ", "Указ Президента", "Постановление Правительства",
-           "Нормативный акт министерства", "Приказ Росгвардии"]
+folders = ["Конституция РФ", "Федеральный конституционный закон", "Федеральный закон", "Указ Президента РФ",
+           "Постановление Правительства РФ", "Нормативный акт министерства или ведомства"]
+
+npa_hierarchy = {
+    "Конституция РФ": 1,
+    "Федеральный конституционный закон": 2,
+    "Федеральный закон": 3,
+    "Указ Президента РФ": 4,
+    "Постановление Правительства РФ": 5,
+    "Нормативный акт министерства или ведомства": 6
+}
+
+
+def get_sort_key(npa):
+    return npa_hierarchy.get(npa, float('inf'))  # Если НПА не найден, присваивается бесконечность
+
+
+sorted_npa_list = sorted(folders, key=get_sort_key)
+folders = [
+    f"{get_sort_key(npa)}. {npa}" for npa in sorted_npa_list
+]
+
+def update_npa_list():
+    global sorted_npa_list
+
 
 
 def create_dirs():
@@ -48,7 +71,7 @@ def scan_directory(directory=None, element_id=None):
         elif item.endswith((".pdf", ".odt", ".rtf", ".docx", ".doc")):
             # Если элемент является файлом, добавляем метку с его именем
             content_listbox.insert(element_id + 1, f"         📄 {item}")
-    #root.after(0, font_listbox)
+    # root.after(0, font_listbox)
 
 
 def show_directory_contents(directory=None):
@@ -65,11 +88,9 @@ def show_directory_contents(directory=None):
 
     # Получаем содержимое текущей директории
     contents = os.listdir(current_directory)
+    sorted_npa_list = sorted(contents, key=get_sort_key)
 
-    # Сортируем содержимое: сначала директории, потом файлы
-    contents.sort(key=lambda x: (os.path.isdir(os.path.join(current_directory, x)), x))
-
-    for item in contents:
+    for item in sorted_npa_list:
         item_path = os.path.join(current_directory, item)
         if os.path.isdir(item_path):
             # Если элемент является директорией, добавляем метку и рекурсивно отображаем ее содержимое
@@ -99,7 +120,6 @@ def user_choose_file():
 
 
 invalid_chars = '<>:"/\\|?*'
-
 
 
 def validate_number(event=None):
@@ -289,7 +309,7 @@ def add_file():
     global In_work, working_file_path
     if validate_name() and validate_number() and validate_date():
         extention = os.path.splitext(os.path.basename(working_file_path))[1]
-        name = f'{main_e_date.get()} {combo.get()} №{main_e_number.get()} \'\'{main_e_name.get()}\'\''
+        name = f'{main_e_date.get()} №{main_e_number.get()} {combo.get().split(". ",1)[1]} \'\'{main_e_name.get()}\'\''
         path_to_new_file = os.path.join(os.getcwd(), combo.get(), (name + extention))
         shutil.copy(working_file_path, path_to_new_file)
         watcher.add_file_to_info(path_to_new_file)
@@ -464,7 +484,7 @@ def rename(path_to_file):
     preview_file(path_to_file)
 
 
-def helper():
+"""def helper():
     if main_b_add.cget("text") == "Выбрать файл":
         hint = "Выберите файл для загрузки или для предпросмотра"
     elif main_e_date.get() == "дд.мм.гггг" or (len(main_e_date.get()) < 10):
@@ -475,12 +495,11 @@ def helper():
         hint = "Выберите вид документа"
     else:
         hint = "Сохраните документ"
-    main_l_hint.config(text=hint)
+    main_l_hint.config(text=hint)"""
 
 
 def file_routine():
     global In_work, helper_window
-    helper()
     if not watcher.file_q.empty() and not In_work:
         In_work = True
         helper_window = tk.Toplevel(root)
@@ -512,6 +531,7 @@ def create_paned():
 
 def get_folder_options():
     directories = [name for name in os.listdir(os.getcwd()) if os.path.isdir(os.path.join(os.getcwd(), name))]
+    directories.append("<<Создать новый класс НПА>>")
     return directories
 
 
@@ -595,6 +615,8 @@ def clear_main():
     new_font = ("Helvetica", final_font_size)
     content_listbox.config(font=new_font)
 """
+
+
 def name_bind(event=None):
     validate_name()
     search_files()
@@ -609,8 +631,96 @@ def date_bind(event=None):
     validate_date()
     search_files()
 
-def hint_handler(event):
-    print(event.widget.widgetName)
+
+def hint_handler(event, data):
+    hints = {"num": "Введите номер документа",
+             "name": "Введите название документа",
+             "date": "Введите дату издания документа",
+             "combo": "Выберите к какому виду документ относится",
+             "listbox": "Выберите документ для просмотра",
+             }
+    if data in hints:
+        main_l_hint.configure(text=hints[data])
+
+
+def on_select_combo(event=None):
+    selected_item = combo.get()
+    if selected_item == "<<Создать новый класс НПА>>":
+        create_new_NPA()
+
+
+def create_new_NPA():
+    global npa_hierarchy
+    npa_hier = npa_hierarchy
+
+    def _create_listbox():
+        for i, item in enumerate(npa_hier):
+            listbox.insert(tk.END, f"{i + 1}. {item}")
+
+    def _on_drag_start(event):
+        index = listbox.nearest(event.y)
+        listbox.selection_clear(0, tk.END)
+        listbox.selection_set(index)
+        listbox._drag_start_index = index
+        listbox._drag_data = listbox.get(index).split(". ", 1)[1]
+
+    def _on_drag_motion(event):
+        index = listbox.nearest(event.y)
+        if index != listbox._drag_start_index:
+            data = listbox.get(index).split(". ", 1)[1]
+            listbox.delete(index)
+            listbox.insert(listbox._drag_start_index, f"{listbox._drag_start_index + 1}. {data}")
+            listbox.delete(index)
+            listbox.insert(index, f"{index + 1}. {listbox._drag_data}")
+            listbox.selection_set(index)
+            listbox._drag_start_index = index
+        # _update_item_numbers()
+
+    def _remove_placeholder(event):
+        if entry.get() == "Название вида НПА":
+            entry.delete(0, tk.END)
+            entry.config(fg="black")
+
+    def _set_placeholder(event):
+        if entry.get() == "":
+            entry.config(fg="grey")
+            entry.insert(0, "Название вида НПА")
+
+    def _save_npa(event=None):
+        global npa_hierarchy
+        new_hier= {}
+        for element in range(listbox.size()):
+            iter1, name = listbox.get(element).split(". ", 1)
+            new_hier[name]=int(iter1)
+        npa_hierarchy = new_hier
+    win = tk.Toplevel(root)
+    win.title("Создание нового класса НПА")
+
+    listbox = tk.Listbox(win, selectmode="single")
+    listbox.pack(side=tk.TOP, fill="both", expand=True)
+    help_l = tk.Label(win, text="Перетащите элемент для изменения иерархии")
+    help_l.pack(side=tk.TOP, fill=tk.X, expand=True)
+    b1 = tk.Button(win, text="Сохранить", command=_save_npa)
+    b2 = tk.Button(win, text="Отменить", command=lambda: win.destroy())
+    b3 = tk.Button(win, text="Добавить элемент",
+                   command=lambda: listbox.insert(tk.END, f"{listbox.size() + 1}. {entry.get()}"))
+    b4 = tk.Button(win, text="Удалить элемент",
+                   command=lambda: listbox.delete(listbox.curselection()[0]))
+    b1.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
+    b2.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
+    b3.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
+    b4.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
+    entry = tk.Entry(win)
+    entry.bind("<FocusIn>", _remove_placeholder)
+    entry.bind("<FocusOut>", _set_placeholder)
+
+    entry.pack(side=tk.BOTTOM, fill=tk.X, expand=True)
+
+    entry.insert(0, "Название вида НПА")
+    entry.config(fg="grey")
+    _create_listbox()
+    listbox.bind("<ButtonPress-1>", _on_drag_start)
+    listbox.bind("<B1-Motion>", _on_drag_motion)
 
 
 root = tk.Tk()
@@ -648,12 +758,11 @@ content_listbox.config(xscrollcommand=scrollbar_x.set)
 
 content_listbox.config(font=font.Font(family="Helvetica", size=14))
 
-
 content_listbox.grid(row=0, column=0, columnspan=6, sticky="nsew")
 content_listbox.bind("<Double-Button-1>", select_file)
 content_listbox.bind("<Button-3>", show_context_menu)
-
-#content_listbox.bind("<Configure>", font_listbox) автоматическая регулировка шрифта
+content_listbox.bind("<Enter>", lambda event: hint_handler(event, "listbox"))
+# content_listbox.bind("<Configure>", font_listbox) автоматическая регулировка шрифта
 
 frame2.grid_rowconfigure(0, weight=400)
 frame2.grid_columnconfigure(0, weight=0)
@@ -667,9 +776,9 @@ main_l_dir = tk.Label(frame2, text="Каталог документа")
 main_l_file = tk.Label(frame2)
 
 # Entries
-main_e_date = tk.Entry(frame2)
-main_e_number = tk.Entry(frame2)
-main_e_name = tk.Entry(frame2)
+main_e_date = tk.Entry(frame2, name="date")
+main_e_number = tk.Entry(frame2, name="num")
+main_e_name = tk.Entry(frame2, name="name")
 
 main_e_date.insert(0, "дд.мм.гггг")
 main_e_date.config(fg="grey")
@@ -684,9 +793,9 @@ main_e_number.bind("<FocusIn>", remove_placeholder2)
 main_e_number.bind("<FocusOut>", set_placeholder2)
 main_e_name.bind("<FocusIn>", remove_placeholder3)
 main_e_name.bind("<FocusOut>", set_placeholder3)
-main_e_number.bind("<Enter>", hint_handler)
-main_e_name.bind("<Enter>", hint_handler)
-main_e_date.bind("<Enter>", hint_handler)
+main_e_number.bind("<Enter>", lambda event: hint_handler(event, "num"))
+main_e_name.bind("<Enter>", lambda event: hint_handler(event, "name"))
+main_e_date.bind("<Enter>", lambda event: hint_handler(event, "date"))
 """main_e_date.bind("<KeyRelease>", validate_date)
 main_e_name.bind("<KeyRelease>", validate_name)
 main_e_number.bind("<KeyRelease>", validate_number)
@@ -710,7 +819,8 @@ selected_option = tk.StringVar()
 
 # Создаем выпадающий список
 combo = ttk.Combobox(frame2, textvariable=selected_option, values=options, state="readonly")
-get_folder_options()
+combo.bind("<<ComboboxSelected>>", on_select_combo)
+combo.bind("<Enter>", lambda event: hint_handler(event, "combo"))
 
 # Pack to frame
 main_l_hint.grid(row=5, column=0, columnspan=6, sticky="nsew")
@@ -719,7 +829,7 @@ main_e_date.grid(row=2, column=1)
 main_l_number.grid(row=2, column=2)
 main_e_number.grid(row=2, column=3)
 main_l_name.grid(row=2, column=4)
-#main_l_file.grid(row=2, column=0, columnspan=4)
+# main_l_file.grid(row=2, column=0, columnspan=4)
 main_e_name.grid(row=2, column=5, sticky="nsew")
 main_l_dir.grid(row=3, column=0, sticky="nsew")
 main_b_add.grid(row=3, column=5, sticky="nsew")
@@ -728,7 +838,7 @@ combo.grid(row=3, column=1, columnspan=3, sticky="nsew")
 
 for n in range(1, 6):
     frame2.grid_columnconfigure(n, weight=1)
-    #frame2.grid_rowconfigure(n, weight=1)
+    # frame2.grid_rowconfigure(n, weight=1)
 # frame2.grid_rowconfigure(1,weight=0)
 for n in range(0, 5):
     frame2.grid_columnconfigure(n, weight=1)
@@ -746,7 +856,7 @@ screen_height = root.winfo_screenheight()
 
 root.geometry(f'{screen_width}x{screen_height - (int(screen_height * 0.1))}+0+0')
 """
-root.geometry(f'1200x600+0+0')
+root.geometry(f'1400x600+0+0')
 
 context_menu = tk.Menu(root, tearoff=0)
 context_menu.add_command(label="Переименовать", command=rename_file_from_contex)
